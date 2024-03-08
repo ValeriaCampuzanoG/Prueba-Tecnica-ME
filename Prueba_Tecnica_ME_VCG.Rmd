@@ -14,29 +14,32 @@ p_load(tidyverse, dplyr, haven, summarytools, texreg, ggplot2, readr)
 C1 <- "#3A2B76"   # Morado
 C2 <- "#C2C1BB"   # Gris
 C3 <- "#0A090B"   # Negro
-C4 <- "#430098"   # Morado2
-C8 <- "#2B234F"   #Morado fuerte
-C5 <- "#8280F7"   # Lila
-C6 <- "#ECECFA"  #Gris-lila
-C7 <- "#8f2d56"   #Violeta
-G <- "#eeeeee" 
+
 
 #bases de datos
-#modvic23 <- read.csv("~/Documents/MEXICO EVALUA/bd_envipe_2023_csv")
+#modvic23 <- read_csv("~/Documents/MEXICO EVALUA/bd_envipe_2023_csv")
 #IDEFC_NM_ene24 <- read_csv("Downloads/IDEFC_NM_ene24.csv")
+#POB_CONAPO <- read_csv("Documents/MEXICO EVALUA/00_Pob_Mitad_1950_2070.csv")
+
 
 ```
 
 ## SESNSP
 
 ### 1. Por entidad
-```{r graf1a}
+```{r graf1}
 #Filtrar datos y sumar delitos
 carpetas2023 <- IDEFC_NM_ene2024 %>% 
   filter (Ano==2023) %>%
   mutate(suma_delito = rowSums(select(., -(1:12))))  %>%
   group_by(Entidad) %>%
   summarise(total_carpetas = sum(suma_delito))
+
+#Cambiar unos estados para que coincidan con mis otras bases 
+carpetas2023$Entidad <- gsub("Veracruz de Ignacio de la Llave", "Veracruz", carpetas2023$Entidad)
+carpetas2023$Entidad <- gsub("Coahuila de Zaragoza", "Coahuila",carpetas2023$Entidad)
+carpetas2023$Entidad <- gsub("Michoacán de Ocampo", "Michoacán", carpetas2023$Entidad)
+
 
 #Grafica  
 p1 <- ggplot(carpetas2023, aes(x = reorder(Entidad, -total_carpetas), y = total_carpetas)) +
@@ -50,7 +53,10 @@ p1 <- ggplot(carpetas2023, aes(x = reorder(Entidad, -total_carpetas), y = total_
 print(p1)
 
 ```
-```{r 1b}
+
+
+
+```{r 1a}
 #Filtrar datos para contestar pregunta
 carpetas2023_ord <- carpetas2023 %>% 
   arrange(desc(total_carpetas)) 
@@ -71,7 +77,7 @@ b. Morelos se encuentra en la posición #16 con 26,954 carpetas
 ### 2. Por alcaldía
 
 
-```{r cars}
+```{r graf2}
 
 alcaldias <- unique(carpetasCDMX2023$Municipio) #lista de alcaldias
 
@@ -81,17 +87,6 @@ carpetasCDMX2023 <- X2023 %>%
   mutate(suma_delito = rowSums(select(., -(1:12))))  %>%
   group_by(Municipio, `Bien jurídico afectado`)%>%
   summarise(total_carpetas = sum(suma_delito))
-
-
-carpetasCDMX2023%>% 
-  filter (Municipio=="Azcapotzalco") %>%
-  ggplot(aes(x=reorder(stringr::str_wrap(`Bien jurídico afectado`, 15), -total_carpetas), y=total_carpetas))+
-  geom_col()+
-  coord_flip()+
-  labs(x="Bien Jurídico Afectado", y="Carpetas Abiertas",
-       title= "Incidencia Delictiva en Azcapotzalco 2023", 
-       subtitle= "Incidencia delictiva por bien jurídico afectado en 2023 en la alcaldía de Azcapotzalco") +
-  theme_minimal()
 
 
 #Loop para obtener todas las alcaldías
@@ -129,13 +124,43 @@ b. ¿Cuáles son los tres principales bienes jurídicosafectados en Milpa Alta?
 Patrimonio (564), familia (480) y otros (399)
 
 ### 3. Tasa 
+
 Con información de proyecciones de Conapo a mitad de año (2020 - 2070), recrea la gráfica 1 por tasa por cada 100 mil habitantes.
 
+```{r graf3}
+pob_2023 <- POB_CONAPO %>% filter(AÑO==2023 & ENTIDAD != "República Mexicana") %>%
+  group_by(ENTIDAD) %>%
+  summarise(poblacion_entidad=sum(POBLACION)) %>%
+  left_join(carpetas2023,by=c('ENTIDAD'='Entidad')) %>%
+  mutate(tasa = (total_carpetas / poblacion_entidad) * 100000)
 
-Cuáles son las cinco entidades con mayor tasa de delitos por cada 100 mil habitantes
-Considerando la incidencia delictiva por tasa, ¿En qué posición se encuentra la entidad de Morelos?
 
 
+p2<- ggplot(pob_2023, aes(x = reorder(ENTIDAD, -tasa), y = tasa)) +
+  geom_col(width = 0.6) +
+  coord_flip()  + 
+  labs(x = "Entidad", y = "Carpetas abiertas",
+       title = "Gráfica 3: Tasa Incidencia Delictiva por 100,000 hab en 2023",
+       subtitle = "Cantidad de carpetas abiertas por delitos del fuero\ncomún por entidad en 2023. Estimaciones de población de CONAPO") +
+  theme_minimal()
+print(p2)
+
+```
+1. Cuáles son las cinco entidades con mayor tasa de delitos por cada 100 mil habitantes
+```{r 3a}
+#Filtrar datos para contestar pregunta
+tasas2023 <- pob_2023 %>% 
+  arrange(desc(tasa)) 
+
+print(head(tasas2023, 5)) #respuesta
+```
+Las cinco entidades son: Colima, Baja California, Aguascalientes, Baja California Sur y Quintana Roo
+
+2. Considerando la incidencia delictiva por tasa, ¿En qué posición se encuentra la entidad de Morelos?
+```{r}
+print(which(tasas2023$ENTIDAD == "Morelos"))
+```
+Se encuentra en el puesto 10
 
 
 ## ENVIPE
