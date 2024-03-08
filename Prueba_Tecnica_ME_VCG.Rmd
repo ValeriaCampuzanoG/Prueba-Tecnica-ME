@@ -1,0 +1,235 @@
+---
+title: "Prueba -Valeria C ME"
+author: "Valeria Campuzano"
+date: "2024-03-05"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(pacman)
+p_load(tidyverse, dplyr, haven, summarytools, texreg, ggplot2, readr)
+
+#Colores de gráficas
+C1 <- "#3A2B76"   # Morado
+C2 <- "#C2C1BB"   # Gris
+C3 <- "#0A090B"   # Negro
+C4 <- "#430098"   # Morado2
+C8 <- "#2B234F"   #Morado fuerte
+C5 <- "#8280F7"   # Lila
+C6 <- "#ECECFA"  #Gris-lila
+C7 <- "#8f2d56"   #Violeta
+G <- "#eeeeee" 
+
+#bases de datos
+#modvic23 <- read.csv("~/Documents/MEXICO EVALUA/bd_envipe_2023_csv")
+#IDEFC_NM_ene24 <- read_csv("Downloads/IDEFC_NM_ene24.csv")
+
+```
+
+## SESNSP
+
+### 1. Por entidad
+```{r graf1a}
+#Filtrar datos y sumar delitos
+carpetas2023 <- IDEFC_NM_ene2024 %>% 
+  filter (Ano==2023) %>%
+  mutate(suma_delito = rowSums(select(., -(1:12))))  %>%
+  group_by(Entidad) %>%
+  summarise(total_carpetas = sum(suma_delito))
+
+#Grafica  
+p1 <- ggplot(carpetas2023, aes(x = reorder(Entidad, -total_carpetas), y = total_carpetas)) +
+  geom_col(width = 0.6) +
+  coord_flip()  + 
+  labs(x = "Entidad", y = "Carpetas abiertas",
+       title = "Gráfica 1: Incidencia Delictiva por entidad 2023",
+       subtitle = "Cantidad de carpetas abiertas por delitos del fuero\ncomún por entidad en 2023") + 
+  theme_minimal()
+
+print(p1)
+
+```
+```{r 1b}
+#Filtrar datos para contestar pregunta
+carpetas2023_ord <- carpetas2023 %>% 
+  arrange(desc(total_carpetas)) 
+
+print(head(carpetas2023_ord, 5)) #respuesta
+```
+
+a. Las cinco entidades con mayor incidencia delictiva son: Estado de México, CDMX, Guanajuato, Jalisco y Baja California.
+
+```{r 1b}
+#respuesta
+print(which(carpetas2023_ord$Entidad == "Morelos"))
+
+```
+
+b. Morelos se encuentra en la posición #16 con 26,954 carpetas 
+
+### 2. Por alcaldía
+
+
+```{r cars}
+
+alcaldias <- unique(carpetasCDMX2023$Municipio) #lista de alcaldias
+
+#Filtro datos
+carpetasCDMX2023 <- X2023 %>% 
+  filter (Entidad=="Ciudad de México") %>%
+  mutate(suma_delito = rowSums(select(., -(1:12))))  %>%
+  group_by(Municipio, `Bien jurídico afectado`)%>%
+  summarise(total_carpetas = sum(suma_delito))
+
+
+carpetasCDMX2023%>% 
+  filter (Municipio=="Azcapotzalco") %>%
+  ggplot(aes(x=reorder(stringr::str_wrap(`Bien jurídico afectado`, 15), -total_carpetas), y=total_carpetas))+
+  geom_col()+
+  coord_flip()+
+  labs(x="Bien Jurídico Afectado", y="Carpetas Abiertas",
+       title= "Incidencia Delictiva en Azcapotzalco 2023", 
+       subtitle= "Incidencia delictiva por bien jurídico afectado en 2023 en la alcaldía de Azcapotzalco") +
+  theme_minimal()
+
+
+#Loop para obtener todas las alcaldías
+for (alcaldia in alcaldias) {
+  delitos_alcaldia <- subset(carpetasCDMX2023, Municipio == alcaldia)
+  plot_a <- ggplot(delitos_alcaldia, aes(x=reorder(stringr::str_wrap(`Bien jurídico afectado`, 15), -total_carpetas), y=total_carpetas))+
+  geom_col()+
+  coord_flip()+
+  labs(x="Bien Jurídico Afectado", y="Carpetas Abiertas",
+       title= paste("Incidencia delictiva en", alcaldia, "2023"), 
+       subtitle= "Incidencia delictiva por bien jurídico afectado en 2023.") +
+  theme_minimal()
+  print(plot_a)
+}
+```
+```{r 2b}
+#respuesta a partir de filtrar base de datos 
+carpetasCDMX2023 %>%
+filter(Municipio=="Benito Juárez" & `Bien jurídico afectado`=="El patrimonio")
+```
+
+a. ¿Cuántos delitos bajo el bien jurídico del patrimonio se reportaron en Benito Juárez?
+8,813 
+```{r 2c}
+#respuesta a partir de filtrar base de datos 
+carpetasCDMX2023 %>%
+  filter(Municipio=="Milpa Alta") %>%
+   arrange(desc(total_carpetas)) %>%
+  head(3)
+
+```
+
+b. ¿Cuáles son los tres principales bienes jurídicosafectados en Milpa Alta?
+
+Patrimonio (564), familia (480) y otros (399)
+
+### 3. Tasa 
+Con información de proyecciones de Conapo a mitad de año (2020 - 2070), recrea la gráfica 1 por tasa por cada 100 mil habitantes.
+
+
+Cuáles son las cinco entidades con mayor tasa de delitos por cada 100 mil habitantes
+Considerando la incidencia delictiva por tasa, ¿En qué posición se encuentra la entidad de Morelos?
+
+
+
+
+## ENVIPE
+
+### 1. Cifra negra por entidad federativa
+La cifra negra se compone de los delitos para los que no se haya abierto una carpeta de investigación.
+INEGI excluye vandalismo de la cifra negra, así que excluyo a las filas en las que se reporta vandalismo (03)
+```{r pressure, echo=FALSE}
+#Cambios en la base de datos 
+names(Mod_Vic2023)[1] <- "ID"
+Mod_Vic2023$FAC_DEL <- as.numeric(Mod_Vic2023$FAC_DEL)
+#Excluir vandalismo
+mod_vic2023 <- Mod_Vic2023 %>% 
+  select (ID, BPCOD,
+      BP1_2C,
+      BP1_20, 
+      BP1_21, 
+      BP1_24, 
+      FAC_DEL) %>%
+  filter(BPCOD!='03') 
+# Columnas sobre denuncia y carpeta. 
+mod_vic2023$DENUNCIA <- 0
+mod_vic2023$CARPETA <- 0
+# El 0 corresponde a la NO DENUNCIA
+mod_vic2023$DENUNCIA[which(mod_vic2023$BP1_20 == 1 | mod_vic2023$BP1_21 == 1)] <- 1
+# El 0 corresponde a que no se abrió una carpeta de investigación
+mod_vic2023$CARPETA[which(mod_vic2023$BP1_24 == 1)] <- 1
+
+
+#Crear 
+mod_vic2023 <- 
+  aggregate(
+    x = list(DELITOS = as.numeric(mod_vic2023$FAC_DEL)), 
+    by = 
+      list(
+        ID = mod_vic2023$ID
+        , CVE_ENT = mod_vic2023$BP1_2C
+        , DENUNCIA = mod_vic2023$DENUNCIA
+        , CARPETA = mod_vic2023$CARPETA
+        )
+    , FUN = sum)
+p_load(reshape2)  
+mod_vic2023 <- 
+  dcast(
+    data = mod_vic2023
+    , fill = 0
+    , formula = ID + CVE_ENT ~ DENUNCIA + CARPETA, 
+    value.var = 'DELITOS')
+
+mod_vic2023$TOTAL <- rowSums(mod_vic2023[, 3:ncol(mod_vic2023)])
+
+mod_vic2023$CN <- mod_vic2023$TOTAL - mod_vic2023$`0_0`
+# prueba 
+Mod_Vic2023$Fecha <- as.Date(x = '2021-06-30')
+columnas <- c(
+    'BPCOD'
+    , 'BP1_20', 
+    'BP1_21', 
+    'BP1_24', 
+    'FAC_DEL',
+    'Fecha')
+
+ temp<- Mod_Vic2023[
+        which(Mod_Vic2023$BPCOD != '03')
+        , columnas]
+ 
+temp$DENUNCIA <- 0
+
+temp$DENUNCIA[which(temp$BP1_20 == 1 | temp$BP1_21 == 1)] <- 1
+
+temp$CARPETA <- 0
+
+temp$CARPETA[which(temp$BP1_24 == 1)] <- 1
+
+temp <- 
+  aggregate(
+    x = list(DELITOS = as.numeric(temp$FAC_DEL)), 
+    by = 
+      list(
+        DENUNCIA = temp$DENUNCIA,
+        FECHA= temp$Fecha,
+        CARPETA = temp$CARPETA),
+    FUN = sum)
+
+
+temp <- 
+  dcast(
+    data = temp, 
+    formula = FECHA ~ DENUNCIA + CARPETA, 
+    value.var = 'DELITOS')
+temp$TOTAL <- apply(X = temp[, 2:ncol(temp)], MARGIN = 1, FUN = sum)
+```
+
+### 2. Cifra negra por delito
+
+
+### 3. Motivos de no denuncia por entidad federativa
