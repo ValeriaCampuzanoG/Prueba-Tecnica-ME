@@ -8,7 +8,7 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(pacman)
-p_load(tidyverse, dplyr, haven, summarytools, texreg, ggplot2, readr)
+p_load(tidyverse, dplyr, ggplot2, readr, reshape2, DT)
 
 #Colores de gráficas
 C1 <- "#3A2B76"   # Morado
@@ -17,9 +17,9 @@ C3 <- "#0A090B"   # Negro
 
 
 #bases de datos
-#modvic23 <- read_csv("~/Documents/MEXICO EVALUA/bd_envipe_2023_csv")
-#IDEFC_NM_ene24 <- read_csv("Downloads/IDEFC_NM_ene24.csv")
-#POB_CONAPO <- read_csv("Documents/MEXICO EVALUA/00_Pob_Mitad_1950_2070.csv")
+modvic23 <- read_csv("~/Documents/MEXICO EVALUA/bd_envipe_2023_csv")
+IDEFC_NM_ene24 <- read_csv("Downloads/IDEFC_NM_ene24.csv")
+POB_CONAPO <- read_csv("Documents/MEXICO EVALUA/00_Pob_Mitad_1950_2070.csv")
 
 
 ```
@@ -170,11 +170,13 @@ La cifra negra se compone de los delitos para los que no se haya abierto una car
 INEGI excluye vandalismo de la cifra negra, así que excluyo a las filas en las que se reporta vandalismo (03)
 ```{r pressure, echo=FALSE}
 #Cambios en la base de datos 
+IDEFC_NM_ene24$Entidad <- as.numeric(IDEFC_NM_ene24$Clave_Ent)
+Mod_Vic2023$FECHA <- as.Date(x = '2021-06-30')
 names(Mod_Vic2023)[1] <- "ID"
 Mod_Vic2023$FAC_DEL <- as.numeric(Mod_Vic2023$FAC_DEL)
 #Excluir vandalismo
 mod_vic2023 <- Mod_Vic2023 %>% 
-  select (ID, BPCOD,
+  select (FECHA, ID, BPCOD,
       BP1_2C,
       BP1_20, 
       BP1_21, 
@@ -182,79 +184,151 @@ mod_vic2023 <- Mod_Vic2023 %>%
       FAC_DEL) %>%
   filter(BPCOD!='03') 
 # Columnas sobre denuncia y carpeta. 
-mod_vic2023$DENUNCIA <- 0
-mod_vic2023$CARPETA <- 0
-# El 0 corresponde a la NO DENUNCIA
+mod_vic2023$DENUNCIA <- 2
+mod_vic2023$CARPETA <- 2
+# El 2 corresponde a la NO DENUNCIA
 mod_vic2023$DENUNCIA[which(mod_vic2023$BP1_20 == 1 | mod_vic2023$BP1_21 == 1)] <- 1
-# El 0 corresponde a que no se abrió una carpeta de investigación
+# El 2 corresponde a que no se abrió una carpeta de investigación
 mod_vic2023$CARPETA[which(mod_vic2023$BP1_24 == 1)] <- 1
 
-
-#Crear 
+#Funcion para agregar por cada combinaión única de fecha, entidad y estatus de denuncia/carpeta 
 mod_vic2023 <- 
   aggregate(
     x = list(DELITOS = as.numeric(mod_vic2023$FAC_DEL)), 
     by = 
       list(
-        ID = mod_vic2023$ID
+        FECHA = mod_vic2023$FECHA
         , CVE_ENT = mod_vic2023$BP1_2C
         , DENUNCIA = mod_vic2023$DENUNCIA
         , CARPETA = mod_vic2023$CARPETA
         )
     , FUN = sum)
-p_load(reshape2)  
+# Cambiar a formato ancho 
 mod_vic2023 <- 
   dcast(
     data = mod_vic2023
     , fill = 0
-    , formula = ID + CVE_ENT ~ DENUNCIA + CARPETA, 
+    , formula = FECHA + CVE_ENT ~ DENUNCIA + CARPETA, 
     value.var = 'DELITOS')
-
+#sumar los tres tipos de delito
 mod_vic2023$TOTAL <- rowSums(mod_vic2023[, 3:ncol(mod_vic2023)])
+#Para obetner la CIFRA NEGRA debo restarle el "2_2", que son todos los delitos que SI se denuncian, al totald de delitos de una entidad 
+mod_vic2023$CN <- mod_vic2023$TOTAL - mod_vic2023$`2_2`
 
-mod_vic2023$CN <- mod_vic2023$TOTAL - mod_vic2023$`0_0`
-# prueba 
-Mod_Vic2023$Fecha <- as.Date(x = '2021-06-30')
-columnas <- c(
-    'BPCOD'
-    , 'BP1_20', 
-    'BP1_21', 
-    'BP1_24', 
-    'FAC_DEL',
-    'Fecha')
+#Limpiar dataframe para resultados 
+mod_vic2023 <- mod_vic2023 %>% 
+  filter(CVE_ENT!="99") %>%
+  select(CVE_ENT, TOTAL, CN) %>%
+  arrange(CN)
 
- temp<- Mod_Vic2023[
-        which(Mod_Vic2023$BPCOD != '03')
-        , columnas]
- 
-temp$DENUNCIA <- 0
+#Para poner el nombre de la entidad voy a unir con una base de datos que ya usé hace rato
+mod_vic2023$CVE_ENT <- as.numeric(mod_vic2023$CVE_ENT)
+mod_vic2023$CVE_ENT <- gsub("^0", "", mod_vic2023$CVE_ENT)
+mod_vic2023 <- mod_vic2023 %>% 
+  left_join(df_estado_entidad, by=c('CVE_ENT'='Clave_Entidad'))
 
-temp$DENUNCIA[which(temp$BP1_20 == 1 | temp$BP1_21 == 1)] <- 1
-
-temp$CARPETA <- 0
-
-temp$CARPETA[which(temp$BP1_24 == 1)] <- 1
-
-temp <- 
-  aggregate(
-    x = list(DELITOS = as.numeric(temp$FAC_DEL)), 
-    by = 
-      list(
-        DENUNCIA = temp$DENUNCIA,
-        FECHA= temp$Fecha,
-        CARPETA = temp$CARPETA),
-    FUN = sum)
-
-
-temp <- 
-  dcast(
-    data = temp, 
-    formula = FECHA ~ DENUNCIA + CARPETA, 
-    value.var = 'DELITOS')
-temp$TOTAL <- apply(X = temp[, 2:ncol(temp)], MARGIN = 1, FUN = sum)
+#Tabla para mostrar resultados 
+p_load("DT")
+datatable(
+  data = mod_vic2023
+  , rownames = FALSE 
+  , colnames = 
+    c(
+      'CLAVE' = 1
+      , 'TOTAL DE DELITOS' = 2
+      , 'CIFRA NEGRA' = 3
+      , 'ESTADO' = 4
+      )
+  , caption = 
+    'Estimación de la cifra negra por estado.') 
 ```
+El estado con mayor cifra negra es el Estado de México con 530135, y el menor es Zacatecas con 12700 delitos sin reportar ni carpeta abierta.
 
 ### 2. Cifra negra por delito
 
+```{r cifnegdelito, echo=FALSE}
+#Cambios en la base de datos 
+IDEFC_NM_ene24$Entidad <- as.numeric(IDEFC_NM_ene24$Clave_Ent)
+Mod_Vic2023$FAC_DEL <- as.numeric(Mod_Vic2023$FAC_DEL)
+#Excluir vandalismo
+mod_vic2023a <- Mod_Vic2023 %>% 
+  select (FECHA, ID, BPCOD,
+      BP1_20, 
+      BP1_21, 
+      BP1_24, 
+      FAC_DEL) %>%
+  filter(BPCOD!='03') 
+# Columnas sobre denuncia y carpeta. 
+mod_vic2023a$DENUNCIA <- 2
+mod_vic2023a$CARPETA <- 2
+# El 2 corresponde a la NO DENUNCIA
+mod_vic2023a$DENUNCIA[which(mod_vic2023a$BP1_20 == 1 | mod_vic2023a$BP1_21 == 1)] <- 1
+# El 2 corresponde a que no se abrió una carpeta de investigación
+mod_vic2023a$CARPETA[which(mod_vic2023a$BP1_24 == 1)] <- 1
+
+#Funcion para agregar por cada combinaión única de fecha, delito y estatus de denuncia/carpeta 
+mod_vic2023a <- 
+  aggregate(
+    x = list(DELITOS = as.numeric(mod_vic2023a$FAC_DEL)), 
+    by = 
+      list(
+        FECHA = mod_vic2023a$FECHA
+        , DELITO = mod_vic2023a$BPCOD
+        , DENUNCIA = mod_vic2023a$DENUNCIA
+        , CARPETA = mod_vic2023a$CARPETA
+        )
+    , FUN = sum)
+# Cambiar a formato ancho 
+mod_vic2023a <- 
+  dcast(
+    data = mod_vic2023a
+    , fill = 0
+    , formula = FECHA + DELITO ~ DENUNCIA + CARPETA, 
+    value.var = 'DELITOS')
+#sumar los tres tipos de delito
+mod_vic2023a$TOTAL <- rowSums(mod_vic2023a[, 3:ncol(mod_vic2023a)])
+#Para obtener la CIFRA NEGRA debo restarle el "2_2", que son todos los delitos que SI se denuncian, al totald de delitos por delito 
+mod_vic2023a$CN <- mod_vic2023a$TOTAL - mod_vic2023a$`2_2`
+
+#Limpiar dataframe para resultados 
+mod_vic2023a <- mod_vic2023a %>% 
+  select(DELITO, TOTAL, CN) %>%
+  arrange(CN)
+
+#Tabla para mostrar resultados 
+datatable(
+  data = mod_vic2023a
+  , rownames = FALSE 
+  , colnames = 
+    c(
+      'CÓDIGO DE DELITO' = 1
+      , 'TOTAL DE DELITOS' = 2
+      , 'CIFRA NEGRA' = 3)
+  , caption = 
+    'Estimación de la cifra negra por tipo de delito') 
+```
+El delito con mayor cifra negra en 2023 fue el de "Amenazas verbales [...] o escritas", con el código de delito #10. Mientra que el menor es el de "Violación sexual", con código #14. 
 
 ### 3. Motivos de no denuncia por entidad federativa
+
+```{r nodenuncia}
+nodenuncia <- Mod_Vic2023 %>%
+  select (FECHA,BP1_2C ,BP1_23)  %>%
+  group_by(BP1_2C, BP1_23) %>%
+  summarise(conteo = n())
+
+nodenuncia$BP1_2C <- gsub("^0", "", nodenuncia$BP1_2C)
+
+nodenuncia <- nodenuncia %>% 
+  left_join(df_estado_entidad, by=c('BP1_2C'='Clave_Entidad'))%>%
+  arrange(BP1_2C,conteo) %>%
+  select(Estado, BP1_23, conteo) %>%
+  filter(Estado=="Yucatán"|Estado=="Campeche")
+
+print(nodenuncia)
+
+```
+
+a. ¿Qué resultados arroja para Yucatán y Campeche?
+
+ En Yucatán las tres principales razones de no denuncia: pérdida de tiempo, no tenía las pruebas o el delito era de poca importancia. Por otro lado, en Campeche las tres primeras: pérdida de tiempo, no tenía pruebas y por desconfianza a la autoridad. 
